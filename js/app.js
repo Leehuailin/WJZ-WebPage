@@ -146,7 +146,10 @@ function showToast(msg, duration = 2400) {
    ============================================================ */
 function formatDate(dateStr) {
   if (!dateStr) return '';
+  // Validate YYYY-MM-DD format before parsing
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
   const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
@@ -256,7 +259,7 @@ function rebuildFilterUI() {
   filterDate.innerHTML = '<option value="">全部时间</option>';
   [...monthSet].sort().reverse().forEach((ym) => {
     const [y, m] = ym.split('-');
-    const label  = `${y}年${parseInt(m)}月`;
+    const label  = `${y}年${parseInt(m, 10)}月`;
     const opt = document.createElement('option');
     opt.value = ym;
     opt.textContent = label;
