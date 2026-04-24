@@ -1,75 +1,95 @@
 /**
  * Life Gallery — app.js
- * Personal photo journal using IndexedDB for storage
+ * Shared photo journal using Firebase (Firestore + Storage)
  */
 
 'use strict';
 
 /* ============================================================
-   IndexedDB Setup
+   Firebase Configuration
+   ============================================================
+   1. Go to https://console.firebase.google.com/ and create a project.
+   2. In the project, create a Web app and copy the config object here.
+   3. Enable Firestore Database (test mode is fine to start).
+   4. Enable Storage (test mode is fine to start).
    ============================================================ */
-const DB_NAME    = 'LifeGalleryDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'photos';
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId:             "YOUR_APP_ID",
+};
+// Note: Firebase client-side API keys are intended to be public.
+// Access control is enforced via Firebase Security Rules in the Console.
 
-let db = null;
+/* ============================================================
+   Firebase initialisation
+   ============================================================ */
+let firestoreDb = null;
+let fbStorage   = null;
+let photosCol   = null;
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+function initFirebase() {
+  if (firebaseConfig.apiKey === 'YOUR_API_KEY') {
+    throw new Error('请先在 js/app.js 中填写你的 Firebase 配置信息。');
+  }
+  firebase.initializeApp(firebaseConfig);
+  firestoreDb = firebase.firestore();
+  fbStorage   = firebase.storage();
+  photosCol   = firestoreDb.collection('photos');
+}
 
-    req.onupgradeneeded = (e) => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains(STORE_NAME)) {
-        const store = d.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-        store.createIndex('uploadedAt', 'uploadedAt', { unique: false });
-        store.createIndex('date',       'date',       { unique: false });
-      }
-    };
+/* ============================================================
+   Data layer — Firestore + Storage
+   ============================================================ */
+async function dbGetAll() {
+  const snapshot = await photosCol.orderBy('uploadedAt', 'desc').get();
+  return snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+}
 
-    req.onsuccess = (e) => { db = e.target.result; resolve(db); };
-    req.onerror   = (e) => reject(e.target.error);
+async function dbAdd(photo) {
+  // Upload image file to Firebase Storage
+  const file       = photo.file;
+  const storageRef = fbStorage.ref(`photos/${Date.now()}_${file.name}`);
+  const uploadSnap = await storageRef.put(file);
+  const imageUrl   = await uploadSnap.ref.getDownloadURL();
+
+  // Save metadata to Firestore
+  const docRef = await photosCol.add({
+    imageUrl,
+    storagePath: uploadSnap.ref.fullPath,
+    date:        photo.date,
+    description: photo.description,
+    tags:        photo.tags,
+    uploadedAt:  photo.uploadedAt,
+    filename:    photo.filename,
+  });
+  return docRef.id;
+}
+
+async function dbUpdate(photo) {
+  const { id, ...data } = photo;
+  await photosCol.doc(id).update({
+    date:        data.date,
+    description: data.description,
+    tags:        data.tags,
   });
 }
 
-function dbGetAll() {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = (e) => reject(e.target.error);
-  });
-}
-
-function dbAdd(photo) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.add(photo);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = (e) => reject(e.target.error);
-  });
-}
-
-function dbUpdate(photo) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.put(photo);
-    req.onsuccess = () => resolve();
-    req.onerror   = (e) => reject(e.target.error);
-  });
-}
-
-function dbDelete(id) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror   = (e) => reject(e.target.error);
-  });
+async function dbDelete(id) {
+  // Also remove the image file from Storage
+  const docSnap = await photosCol.doc(id).get();
+  if (docSnap.exists) {
+    const { storagePath } = docSnap.data();
+    if (storagePath) {
+      await fbStorage.ref(storagePath).delete().catch(() => {
+        // Ignore storage deletion errors (file may already be gone).
+      });
+    }
+  }
+  await photosCol.doc(id).delete();
 }
 
 /* ============================================================
@@ -188,7 +208,7 @@ function renderGrid() {
     return `
       <article class="photo-card" data-id="${p.id}" role="button" tabindex="0" aria-label="查看照片${p.description ? ': ' + escHtml(p.description) : ''}">
         <div class="photo-card-img-wrap">
-          <img src="${p.dataUrl}" alt="${p.description ? escHtml(p.description) : '照片'}" loading="lazy" />
+          <img src="${p.imageUrl}" alt="${p.description ? escHtml(p.description) : '照片'}" loading="lazy" />
         </div>
         ${(dateStr || descHtml || tagsHtml) ? `
         <div class="photo-card-body">
@@ -201,11 +221,11 @@ function renderGrid() {
 
   // Re-attach click events
   photoGrid.querySelectorAll('.photo-card').forEach((card) => {
-    card.addEventListener('click', () => openLightbox(Number(card.dataset.id)));
+    card.addEventListener('click', () => openLightbox(card.dataset.id));
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        openLightbox(Number(card.dataset.id));
+        openLightbox(card.dataset.id);
       }
     });
   });
@@ -390,9 +410,8 @@ uploadForm.addEventListener('submit', async (e) => {
 
   try {
     for (const file of pendingFiles) {
-      const dataUrl = await readFileAsDataURL(file);
       await dbAdd({
-        dataUrl,
+        file,
         date,
         description: desc,
         tags,
@@ -411,15 +430,6 @@ uploadForm.addEventListener('submit', async (e) => {
     submitText.textContent = '保存照片';
   }
 });
-
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload  = (e) => resolve(e.target.result);
-    reader.onerror = (e) => reject(e.target.error);
-    reader.readAsDataURL(file);
-  });
-}
 
 /* ============================================================
    Lightbox
@@ -441,7 +451,7 @@ function closeLightbox() {
 function renderLightbox() {
   const p = filteredPhotos[lightboxIndex];
   if (!p) return;
-  lightboxImg.src = p.dataUrl;
+  lightboxImg.src = p.imageUrl;
   lightboxImg.alt = p.description || '照片';
   lightboxDate.textContent = p.date ? formatDate(p.date) : '';
   lightboxDesc.textContent = p.description || '';
@@ -538,7 +548,7 @@ editModal.addEventListener('click', (e) => {
 
 editForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const id = Number(editPhotoId.value);
+  const id = editPhotoId.value;
   const photo = allPhotos.find(p => p.id === id);
   if (!photo) return;
 
@@ -557,12 +567,12 @@ editForm.addEventListener('submit', async (e) => {
    ============================================================ */
 async function init() {
   try {
-    await openDB();
+    initFirebase();
     await loadPhotos();
   } catch (err) {
-    console.error('DB init error:', err);
+    console.error('Firebase init error:', err);
     emptyState.querySelector('.empty-hint').textContent =
-      '无法初始化数据库，请检查浏览器设置或使用现代浏览器。';
+      err.message || '初始化失败，请检查 Firebase 配置。';
   }
 }
 
