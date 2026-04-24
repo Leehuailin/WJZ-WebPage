@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>生活相册 · Life Gallery</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500&family=Noto+Sans+SC:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-icon">🌿</span>
+        <div class="brand-text">
+          <h1 class="site-title">Life Gallery</h1>
+          <p class="site-tagline">记录每一个平凡而珍贵的瞬间</p>
+        </div>
+      </div>
+      <div class="header-stats">
+        <span id="photoCount" class="stat-badge">0 张照片</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Filter Bar ===== -->
+  <div class="filter-bar">
+    <div class="filter-inner">
+      <div class="filter-group">
+        <label class="filter-label">时间</label>
+        <select id="filterDate" class="filter-select">
+          <option value="">全部时间</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">标签</label>
+        <div id="tagFilters" class="tag-filter-list">
+          <button class="tag-btn active" data-tag="">全部</button>
+        </div>
+      </div>
+      <div class="filter-group filter-search">
+        <input type="text" id="searchInput" class="search-input" placeholder="搜索描述…" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Photo Grid ===== -->
+  <main class="gallery-main">
+    <div id="emptyState" class="empty-state">
+      <div class="empty-icon">📷</div>
+      <p class="empty-title">还没有照片</p>
+      <p class="empty-hint">点击右下角的 <strong>+</strong> 按钮，开始记录你的生活吧 ✨</p>
+    </div>
+    <div id="photoGrid" class="photo-grid"></div>
+  </main>
+
+  <!-- ===== Floating Upload Button ===== -->
+  <button id="openUpload" class="fab" title="上传照片" aria-label="上传照片">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>
+  </button>
+
+  <!-- ===== Upload Modal ===== -->
+  <div id="uploadModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
+    <div class="modal-card upload-card">
+      <div class="modal-header">
+        <h2 id="uploadModalTitle" class="modal-title">添加照片</h2>
+        <button class="modal-close" id="closeUpload" aria-label="关闭">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <form id="uploadForm" novalidate>
+        <!-- Drop Zone -->
+        <div id="dropZone" class="drop-zone" role="button" tabindex="0" aria-label="点击或拖拽上传照片">
+          <div id="dropZoneContent" class="drop-zone-content">
+            <span class="drop-icon">🖼️</span>
+            <p class="drop-text">点击选择照片，或将照片拖到这里</p>
+            <p class="drop-hint">支持 JPG、PNG、GIF、WebP，可多选</p>
+          </div>
+          <div id="previewContainer" class="preview-container"></div>
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        </div>
+
+        <!-- Metadata -->
+        <div class="form-fields">
+          <div class="form-row">
+            <label class="form-label" for="photoDate">日期</label>
+            <input type="date" id="photoDate" class="form-input" />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="photoDesc">描述</label>
+            <textarea id="photoDesc" class="form-input form-textarea" placeholder="写点什么…（可选）" rows="2"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="photoTags">标签</label>
+            <input type="text" id="photoTags" class="form-input" placeholder="用逗号分隔，如：旅行,美食（可选）" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="cancelUpload">取消</button>
+          <button type="submit" class="btn btn-primary" id="submitUpload">
+            <span id="submitText">保存照片</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== Lightbox Modal ===== -->
+  <div id="lightbox" class="lightbox-overlay" role="dialog" aria-modal="true" aria-label="查看照片">
+    <button class="lightbox-close" id="closeLightbox" aria-label="关闭">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+    <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="上一张">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    </button>
+    <div class="lightbox-content">
+      <img id="lightboxImg" class="lightbox-img" src="" alt="" />
+      <div class="lightbox-info">
+        <p id="lightboxDate" class="lightbox-date"></p>
+        <p id="lightboxDesc" class="lightbox-desc"></p>
+        <div id="lightboxTags" class="lightbox-tags"></div>
+      </div>
+      <div class="lightbox-actions">
+        <button class="btn btn-ghost btn-sm" id="editPhoto">编辑</button>
+        <button class="btn btn-danger btn-sm" id="deletePhoto">删除</button>
+      </div>
+    </div>
+    <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="下一张">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+    </button>
+  </div>
+
+  <!-- ===== Edit Modal ===== -->
+  <div id="editModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="editModalTitle" class="modal-title">编辑照片信息</h2>
+        <button class="modal-close" id="closeEdit" aria-label="关闭">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <form id="editForm" novalidate>
+        <input type="hidden" id="editPhotoId" />
+        <div class="form-fields">
+          <div class="form-row">
+            <label class="form-label" for="editDate">日期</label>
+            <input type="date" id="editDate" class="form-input" />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="editDesc">描述</label>
+            <textarea id="editDesc" class="form-input form-textarea" placeholder="写点什么…" rows="3"></textarea>
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="editTags">标签</label>
+            <input type="text" id="editTags" class="form-input" placeholder="用逗号分隔" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-ghost" id="cancelEdit">取消</button>
+          <button type="submit" class="btn btn-primary">保存更改</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
